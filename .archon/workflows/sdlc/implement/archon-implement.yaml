@@ -29,6 +29,9 @@ nodes:
   # it deterministically before spending or shipping (deliver does), and the
   # workflow's outcome_field records it as the run's authored outcome.
   - id: implement
+    # Project-declared MCP servers for the coding agent (read-only Odoo inspection
+    # for LWOS). The path resolves inside the delivering checkout.
+    mcp: .archon/mcp.json
     loop:
       command: implement
       until_field: done
