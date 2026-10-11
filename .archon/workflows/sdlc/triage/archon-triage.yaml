@@ -45,6 +45,7 @@ outcome_field: ready
 
 nodes:
   - id: triage
+    model: opus
     command: triage
     # Triage is advisory on both counts, and the engine holds both. It fails this
     # node with the touched paths named if the checkout is modified, and it
