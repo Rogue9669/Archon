@@ -63,6 +63,7 @@ nodes:
       required: [requirement, source, checks, checks_state, results, reason]
 
   - id: assess
+    model: opus
     command: assess-merge-queue
     context: fresh
     depends_on: [ci-policy]
