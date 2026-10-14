@@ -13,7 +13,6 @@ assess:
   method: "squash"
   validation_verified: true
   review_verified: true
-  plan_digest: "fixture"
   holds: []
 publish-holds:
   published: false

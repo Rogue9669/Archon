@@ -129,7 +129,7 @@ function assessment(
     method: 'squash',
     validation_verified: true,
     review_verified: true,
-    plan_digest: digest(content),
+    plan_digest: digest(content), // the gate script's own output carries the file digest
     ...overrides,
   };
 }
@@ -151,6 +151,11 @@ describe('merge action boundary', () => {
     };
 
     expect(invoke({})).toMatchObject({ ready: true, method: 'squash' });
+    // The gate digests merge-plan.json itself; an agent's transcription of it is not consulted.
+    expect(invoke({ plan_digest: 'mistyped' })).toMatchObject({
+      ready: true,
+      plan_digest: digest(content),
+    });
     // An agent's own CI fields no longer decide anything: on identical evidence
     // the model answered "none" and "unknown" by turns.
     expect(invoke({ ci_requirement: 'unknown', checks_state: 'missing' })).toMatchObject({

@@ -82,7 +82,6 @@ nodes:
         method: { type: string, enum: [merge, squash, rebase, ''] }
         validation_verified: { type: boolean }
         review_verified: { type: boolean }
-        plan_digest: { type: string }
         holds:
           type: array
           items:
@@ -93,7 +92,7 @@ nodes:
               action: { type: string, enum: [hold, clear] }
               reasons: { type: array, items: { type: string } }
             required: [pr_url, head_sha, action, reasons]
-      required: [summary, eligible, method, validation_verified, review_verified, plan_digest, holds]
+      required: [summary, eligible, method, validation_verified, review_verified, holds]
 
   - id: publish-holds
     script: publish-holds
