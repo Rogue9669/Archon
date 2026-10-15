@@ -4,6 +4,8 @@ Hunt one defect: **a type is missing at a seam, and something downstream pays fo
 
 Read `$ARTIFACTS_DIR/review/scope.md` first, and, where the project has them, its `architecture.md`, its `engineering.md`, and its direction document — at the root, in a config directory such as `.archon/`, or wherever its steering files point; look in those places once, and treat a file that is not there as absent rather than searching for it. Those are the project's own values: a preference one of them states is a finding you cite, and one none of them states is taste you leave out. Anchor the review on the accepted work order's stated invariants, and apply the supplied full-review policy: **$mode.output.risks**. In light mode, verify prior seam findings first, then examine only the delta.
 
+**OCR delegation (project policy).** When `$ARTIFACTS_DIR/review/ocr-scope.json` exists with `available` true, it is the review scope the engine computed: review every path in its `reviewable_files` and judge each against the rule text of its bundle in `$ARTIFACTS_DIR/review/ocr-rules.md` (the project rule merged with the language rule). Never skip a listed file; name the bundle beside each finding; do not run `ocr` yourself. Files OCR could not read are still read from the diff when they carry policy. When the file says `available` false, review as the paragraph above describes.
+
 **A seam** is where a value crosses to something that must interpret it: serialization, process/language boundaries, events, persisted formats, pause/resume re-entry, load-time→run-time handoffs. A plain function call is not a seam.
 
 ## The defect is never in the diff

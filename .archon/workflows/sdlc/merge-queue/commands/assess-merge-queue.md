@@ -24,7 +24,10 @@ the implementer, a current external review report in a format the project's
 guidance approves, or Archon's canonical report comment beginning with
 `<!-- archon-review-report -->`. For any format, require a ready verdict, no open
 blocking findings, and evidence bound to the PR's current head. The Archon marker
-is one supported format, never a universal requirement. Hold when the available
+is one supported format, never a universal requirement. When project guidance requires
+review delegation through open-code-review, the report's `OCR delegation` line, written
+by the review workflow's script node from its artifact, is that evidence; do not demand
+further prose from the lenses. Hold when the available
 review is missing, not credible under project guidance, not ready, or stale.
 
 Read dependencies and diffs to select an order. Hold if the requested PRs have an

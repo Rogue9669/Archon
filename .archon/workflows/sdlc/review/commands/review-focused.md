@@ -4,6 +4,8 @@ This change was classified low-risk, so you stand in for the correctness and tes
 
 Read `$ARTIFACTS_DIR/review/scope.md` first — and, where the project has them, its `architecture.md`, its `engineering.md`, and its direction document — at the root, in a config directory such as `.archon/`, or wherever its steering files point; look in those places once, and treat a file that is not there as absent rather than searching for it — then review exactly the diff scope.md describes. Those are the project's own values: a preference one of them states is a finding you cite, and one none of them states is taste you leave out. Anchor the review on the accepted work order's stated invariants, and apply the supplied full-review policy: **$mode.output.risks**. If the change engages a full-review risk, declare `full_review: true` with the evidence first in your report. The full specialists then review the same head before synthesis; retain your findings as supplementary evidence.
 
+**OCR delegation (project policy).** When `$ARTIFACTS_DIR/review/ocr-scope.json` exists with `available` true, it is the review scope the engine computed: review every path in its `reviewable_files` and judge each against the rule text of its bundle in `$ARTIFACTS_DIR/review/ocr-rules.md` (the project rule merged with the language rule). Never skip a listed file; name the bundle beside each finding; do not run `ocr` yourself. Files OCR could not read are still read from the diff when they carry policy. When the file says `available` false, review as the paragraph above describes.
+
 ## What to judge
 
 - **Correctness** — a reachable input or state that produces an outcome contradicting the required behavior, an existing contract, or a supported caller.

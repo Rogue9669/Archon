@@ -114,6 +114,24 @@ nodes:
           required: [repo, number]
       required: [docs, pr]
 
+  # Deterministic review scope through open-code-review delegation (LWOS): the file list and
+  # the rule text per bundle come from a script, not from each lens deciding to delegate.
+  - id: ocr-scope
+    script: ocr-scope
+    runtime: uv
+    mutates_checkout: false
+    depends_on: [scope]
+    with:
+      scope: "$scope.output"
+    output_format:
+      type: object
+      properties:
+        available: { type: boolean }
+        reviewable_count: { type: integer }
+        bundle_count: { type: integer }
+        summary: { type: string }
+      required: [available, reviewable_count, bundle_count, summary]
+
   # ── Lenses ────────────────────────────────────────────────────────
   # Every reviewer is read-only by the engine's check, not only by its prompt:
   # lenses run in parallel in one checkout, so a reviewer that edits it can
@@ -124,7 +142,7 @@ nodes:
     command: review-seams
     context: fresh
     mutates_checkout: false
-    depends_on: [scope]
+    depends_on: [scope, ocr-scope]
     when: "$mode.output.continuation == false"
 
   - id: code
@@ -150,7 +168,7 @@ nodes:
     command: review-focused
     context: fresh
     mutates_checkout: false
-    depends_on: [scope]
+    depends_on: [scope, ocr-scope]
     when: "$mode.output.continuation == false && $INPUTS.tier == 'focused'"
     output_format:
       type: object

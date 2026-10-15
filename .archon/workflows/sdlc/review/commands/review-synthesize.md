@@ -137,6 +137,7 @@ The report contains:
 
 1. **Verdict:** ready or not, the action (`none`, `correct`, or `replan`), and the one-sentence reason.
 2. **Accepted contract:** required outcome, acceptance, invariant, and steering items, and explicit boundaries carried from scope.md.
+3a. **OCR delegation:** copy the `summary` of `$ARTIFACTS_DIR/review/ocr-scope.json` (one line: merge base, reviewable files, bundles) and name the lens reports that cite its bundles; when `available` is false, its `reason`. This line, written from the engine's artifact, is the evidence that the review was delegated.
 3. **Reviewed head SHA:** the full SHA scope.md records as under review, stated exactly. Publication refuses a report that does not name it, and records it as the next round's cursor.
 4. **Contract coverage:** one row per acceptance, invariant, and steering item: the item, its verdict (`met`, `unmet`, or `deferred`), and the evidence, the finding ID, or the later step that owns it. Or one line saying the contract states none.
 5. **Findings:** blocking first, then notes, each with ID, `sources`, claim, what it costs if it merges, `file:line` evidence, and the smallest correction. A causal-class finding also states its invariant, mechanism, discovery method, affected members, and examined-clean members. Then rejected findings.
