@@ -29,6 +29,7 @@
  *   `shouldPassNoEnvFile` for the implications on the `--no-env-file` flag.
  */
 import { buildProviderSubprocessEnv } from '@archon/provider-contract';
+import { selfMatchRefusal, selfMatchingProcessSearch } from './self-match-guard';
 import type { CredentialStatus, ProviderDiagnostics } from '@archon/provider-contract';
 import {
   query,
@@ -38,6 +39,8 @@ import {
   type McpServerStatus,
   type PostToolUseFailureHookInput,
   type PostToolUseHookInput,
+  type PreToolUseHookInput,
+  type SyncHookJSONOutput,
   type SDKAPIRetryMessage,
   type SDKAssistantMessageError,
   type SDKRateLimitInfo,
@@ -997,6 +1000,31 @@ function buildBaseClaudeOptions(
  */
 function buildToolCaptureHooks(toolResultQueue: ToolResultEntry[]): Options['hooks'] {
   return {
+    // LWOS: refuse a Bash wait on pgrep -f / pkill -f of a pattern the command itself
+    // carries; it matches its own shell and never ends (Director decision 2026-10-17).
+    PreToolUse: [
+      {
+        matcher: 'Bash',
+        hooks: [
+          (async (input: PreToolUseHookInput): Promise<SyncHookJSONOutput> => {
+            const command = (input.tool_input as { command?: unknown } | undefined)?.command;
+            const pattern = typeof command === 'string' ? selfMatchingProcessSearch(command) : null;
+            if (pattern === null) return { continue: true };
+            getLog().warn(
+              { pattern, toolUseId: input.tool_use_id },
+              'claude.self_matching_wait_refused'
+            );
+            return {
+              hookSpecificOutput: {
+                hookEventName: 'PreToolUse',
+                permissionDecision: 'deny',
+                permissionDecisionReason: selfMatchRefusal(pattern),
+              },
+            };
+          }) as HookCallback,
+        ],
+      },
+    ],
     PostToolUse: [
       {
         hooks: [

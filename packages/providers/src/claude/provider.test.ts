@@ -2279,6 +2279,46 @@ describe('sendQuery decomposition behaviors', () => {
     mockLogger.debug.mockClear();
   });
 
+  test('a PreToolUse hook refuses a Bash wait on pgrep -f of its own pattern (LWOS)', async () => {
+    const decisions: unknown[] = [];
+    mockQuery.mockImplementation(async function* (args) {
+      const matcher = args.options?.hooks?.PreToolUse?.[0];
+      const hook = matcher?.hooks?.[0];
+      const hookOptions = { signal: new AbortController().signal };
+      expect(matcher?.matcher).toBe('Bash');
+      decisions.push(
+        await hook?.(
+          {
+            tool_name: 'Bash',
+            tool_use_id: 'wait-id',
+            tool_input: { command: 'until ! pgrep -f "harness/ci.py"; do sleep 5; done' },
+          } as never,
+          'wait-id',
+          hookOptions
+        )
+      );
+      decisions.push(
+        await hook?.(
+          { tool_name: 'Bash', tool_use_id: 'pid-id', tool_input: { command: 'wait $!' } } as never,
+          'pid-id',
+          hookOptions
+        )
+      );
+      yield { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } };
+    });
+
+    for await (const _chunk of client.sendQuery('test', '/workspace')) {
+      // drain
+    }
+
+    const refused = decisions[0] as {
+      hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string };
+    };
+    expect(refused.hookSpecificOutput?.permissionDecision).toBe('deny');
+    expect(refused.hookSpecificOutput?.permissionDecisionReason).toContain('harness/ci.py');
+    expect(decisions[1]).toEqual({ continue: true });
+  });
+
   test('PostToolUse hooks close each call as completed, failed or cancelled', async () => {
     mockQuery.mockImplementation(async function* (args) {
       const successHook = args.options?.hooks?.PostToolUse?.[0]?.hooks?.[0];
