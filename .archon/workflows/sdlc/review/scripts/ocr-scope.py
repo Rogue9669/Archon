@@ -49,21 +49,24 @@ if not Path(".opencodereview/rule.json").is_file():
     raise SystemExit(0)
 
 head = run(["git", "rev-parse", "HEAD"]).stdout.strip()
+# The pull request's own base branch is authoritative. scope.md is free text written by an agent and may
+# quote identifiers in backticks after the word "base" (run e86c6487 read `_lwos_bytes` that way), so it is
+# consulted only through its Target line, and only when the pull request cannot be asked.
 base = None
-scope_md = artifacts / "scope.md"
-if scope_md.is_file():
-    m = re.search(r"base `([^`]+)`", scope_md.read_text())
-    if m:
-        base = m.group(1)
 pr = scope_input.get("pr") or {}
-if not base and pr.get("number"):
+if pr.get("number"):
     r = run(["gh", "pr", "view", str(pr["number"]), "--repo", pr["repo"]["path"], "--json", "baseRefName", "--jq", ".baseRefName"])
     base = r.stdout.strip() or None
+scope_md = artifacts / "scope.md"
+if not base and scope_md.is_file():
+    m = re.search(r"^PR \S+ \([^)]*\), base `([^`]+)`", scope_md.read_text(), re.MULTILINE)
+    if m:
+        base = m.group(1)
 if not base:
     r = run(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
     base = r.stdout.strip().removeprefix("origin/") or None
 if not base:
-    unavailable("no base branch could be determined from scope.md, the pull request or origin/HEAD")
+    unavailable("no base branch could be determined from the pull request, the Target line of scope.md or origin/HEAD")
     raise SystemExit(0)
 
 run(["git", "fetch", "origin", base])  # a stale local base would scope a diff the pull request does not have
