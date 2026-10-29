@@ -26,6 +26,9 @@ interface Policy {
   checks_state: CheckState | 'not_applicable' | 'unknown';
   results: CheckResult[];
   reason: string;
+  // Pull requests GitHub reports as conflicting with their base: a fact the gate
+  // turns into a stable hold code, so a composing lifecycle can merge the base.
+  conflicts: string[];
 }
 
 const passingConclusions = new Set(['success', 'neutral', 'skipped']);
@@ -100,8 +103,8 @@ function emit(policy: Policy): void {
   console.log(JSON.stringify(policy));
 }
 
-function unknown(reason: string, checks: string[] = []): void {
-  emit({ requirement: 'unknown', source: '', checks, checks_state: 'unknown', results: [], reason });
+function unknown(reason: string, checks: string[] = [], conflicts: string[] = []): void {
+  emit({ requirement: 'unknown', source: '', checks, checks_state: 'unknown', results: [], reason, conflicts });
 }
 
 function protectedChecks(body: unknown): string[] | null {
@@ -192,8 +195,9 @@ function main(): void {
 
   const heads: { url: string; head: string; rollup: unknown[] | null }[] = [];
   const bases = new Set<string>();
+  const conflicts: string[] = [];
   for (const [index, match] of identities.entries()) {
-    const view = gh(['pr', 'view', match?.[2] ?? '', '--repo', repository, '--json', 'baseRefName,headRefOid,statusCheckRollup']);
+    const view = gh(['pr', 'view', match?.[2] ?? '', '--repo', repository, '--json', 'baseRefName,headRefOid,statusCheckRollup,mergeable']);
     let pr: JsonObject = {};
     try {
       pr = object(JSON.parse(view.stdout) as unknown);
@@ -205,6 +209,7 @@ function main(): void {
       return;
     }
     bases.add(pr.baseRefName);
+    if (pr.mergeable === 'CONFLICTING') conflicts.push(urls[index]);
     heads.push({
       url: urls[index],
       head: pr.headRefOid,
@@ -212,14 +217,14 @@ function main(): void {
     });
   }
   if (bases.size !== 1) {
-    unknown('the requested pull requests target more than one base branch');
+    unknown('the requested pull requests target more than one base branch', [], conflicts);
     return;
   }
   const base = [...bases][0];
 
   const declaration = declared(process.env.INPUTS_REQUIRED_CHECKS ?? '');
   if (declaration === 'invalid') {
-    unknown('required_checks must be empty, "none", or a comma-separated list of check names');
+    unknown('required_checks must be empty, "none", or a comma-separated list of check names', [], conflicts);
     return;
   }
 
@@ -245,13 +250,15 @@ function main(): void {
     unknown(
       `GitHub did not report the required checks for ${repository}@${base}: ${unread.join(', ')}. ` +
         'Declare them with the required_checks input: "none", or a comma-separated list of ' +
-        'check names (for example "tests").'
+        'check names (for example "tests").',
+      [],
+      conflicts
     );
     return;
   }
 
   if (checks.length === 0) {
-    emit({ requirement: 'none', source, checks, checks_state: 'not_applicable', results: [], reason: '' });
+    emit({ requirement: 'none', source, checks, checks_state: 'not_applicable', results: [], reason: '', conflicts });
     return;
   }
 
@@ -275,6 +282,7 @@ function main(): void {
         checks_state: 'unknown',
         results,
         reason: `could not read check results for ${url} at ${head}`,
+        conflicts,
       });
       return;
     }
@@ -291,6 +299,7 @@ function main(): void {
     checks_state: state,
     results,
     reason: unmet.map(result => `${result.check} is ${result.state} on ${result.pr}`).join('; '),
+    conflicts,
   });
 }
 

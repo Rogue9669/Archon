@@ -121,6 +121,8 @@ merge:
   queued: []
   prior_base_sha: "fixture-base"
   summary: "stub: merged"
+  hold_code: ""
+merged: { merged: true, urls: ["https://github.com/example/app/pull/7"], summary: "stub: merged", source: "merge" }
 close-target: { closed: true, reason: "stub: closed after merge" }
 fixture:
   expect: completed

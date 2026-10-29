@@ -12,6 +12,7 @@ ci-policy:
       check: "tests"
       state: "passing"
   reason: ""
+  conflicts: []
 assess:
   summary: "stub: batch eligible"
   eligible: true
@@ -28,6 +29,7 @@ gate:
   summary: "stub: gate ready"
   method: "squash"
   plan_digest: "fixture"
+  hold_code: ""
 refresh:
   authorized: true
   repository: "example/app"
@@ -42,6 +44,7 @@ execute:
   queued: []
   prior_base_sha: "fixture-base"
   summary: "stub: merged"
+  hold_code: ""
 fixture:
   expect: completed
   reached: [ci-policy, assess, gate, execute]

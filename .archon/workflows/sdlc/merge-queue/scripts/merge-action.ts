@@ -5,6 +5,8 @@ import { join } from 'node:path';
 type JsonObject = Record<string, unknown>;
 type MergeMethod = keyof typeof methodFlags;
 
+type HoldCode = '' | 'base_conflict' | 'base_moved';
+
 interface MergeResult {
   done: boolean;
   merged: boolean;
@@ -12,6 +14,9 @@ interface MergeResult {
   queued: string[];
   prior_base_sha: string;
   summary: string;
+  // A stable code for the two holds a composing lifecycle can act on itself: a
+  // base conflict (merge the base into the branch) and a moved base (assess again).
+  hold_code: HoldCode;
 }
 
 const methodFlags = {
@@ -146,12 +151,19 @@ function gate(): void {
   if (assessment.validation_verified !== true) reasons.push('independent validation is not verified');
   if (assessment.review_verified !== true) reasons.push('independent review is not verified');
   reasons.push(...evidenceReasons(current.value));
+  // GitHub's own mergeability, read by the policy script, decides the base-conflict
+  // hold: an agent's prose about a conflict is not consulted.
+  const conflicts = strings(policy.conflicts);
+  if (conflicts.length > 0) {
+    reasons.push(`pull request conflicts with its base: ${conflicts.join(', ')}`);
+  }
   console.log(
     JSON.stringify({
       ready: reasons.length === 0,
       summary: reasons.length > 0 ? reasons.join('; ') : (typeof assessment.summary === 'string' ? assessment.summary : ''),
       method: isMethod(method) ? method : '',
       plan_digest: current.digest,
+      hold_code: conflicts.length > 0 ? 'base_conflict' : '',
     })
   );
 }
@@ -174,9 +186,14 @@ function stop(
   urls: string[],
   queued: string[],
   priorBaseSha: string,
-  summary: string
+  summary: string,
+  holdCode: HoldCode = ''
 ): void {
-  finish({ done: true, merged: false, urls, queued, prior_base_sha: priorBaseSha, summary });
+  finish({ done: true, merged: false, urls, queued, prior_base_sha: priorBaseSha, summary, hold_code: holdCode });
+}
+
+function gateHoldCode(gated: JsonObject): HoldCode {
+  return gated.hold_code === 'base_conflict' ? 'base_conflict' : '';
 }
 
 function runGh(args: string[]): ReturnType<typeof Bun.spawnSync> {
@@ -191,7 +208,7 @@ function execute(): void {
   const queued = strings(previous.queued);
   const priorBaseSha = typeof previous.prior_base_sha === 'string' ? previous.prior_base_sha : '';
   if (!authorized(gated, process.env.INPUTS_MODE ?? '', input('approval'))) {
-    stop(urls, queued, priorBaseSha, 'merge is not authorized');
+    stop(urls, queued, priorBaseSha, 'merge is not authorized', gateHoldCode(gated));
     return;
   }
 
@@ -218,6 +235,7 @@ function execute(): void {
       queued,
       prior_base_sha: priorBaseSha,
       summary: 'all planned pull requests are merged',
+      hold_code: '',
     });
     return;
   }
@@ -233,13 +251,22 @@ function execute(): void {
     request.head_sha === head &&
     request.method === method;
   if (request.authorized !== true || !requestMatches || !isMethod(method)) {
+    // A refused refresh with the base past the assessed `base_sha` is the moved-base
+    // hold: the live base is read here, not inferred from the agent's wording.
+    let holdCode: HoldCode = '';
+    if (request.authorized !== true && typeof repository === 'string' && typeof current.value.base === 'string') {
+      const live = runGh(['api', `repos/${repository}/branches/${encodeURIComponent(current.value.base)}`, '--jq', '.commit.sha']);
+      const liveSha = live.exitCode === 0 ? (live.stdout?.toString() ?? '').trim() : '';
+      if (liveSha !== '' && liveSha !== current.value.base_sha) holdCode = 'base_moved';
+    }
     stop(
       urls,
       queued,
       priorBaseSha,
       typeof request.summary === 'string' && request.summary !== ''
         ? request.summary
-        : 'fresh merge checks did not authorize a write'
+        : 'fresh merge checks did not authorize a write',
+      holdCode
     );
     return;
   }
@@ -313,6 +340,7 @@ function execute(): void {
       summary: done
         ? 'all planned pull requests are merged'
         : 'merge confirmed; refreshing the next planned pull request',
+      hold_code: '',
     });
   } else if (merge.exitCode === 0) {
     stop(urls, queued, priorBaseSha, 'GitHub accepted the request but merge or queue state is unclear');

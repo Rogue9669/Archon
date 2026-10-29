@@ -91,7 +91,7 @@ inputs:
   identity:
     default: ''
     description: Optional command printing the deployed revision, for archon-deploy.
-returns: merge
+returns: merged
 nodes:
   # Backlog intake is deterministic gh reads; judgment about the issue belongs
   # to triage. An explicit target passes through unchanged.
@@ -278,6 +278,166 @@ nodes:
       publish_holds: "$INPUTS.publish_holds"
       evidence: "$selected.output.evidence"
 
+  # A verified pull request held only because the base moved under it (another
+  # lap merged first) is not a defect in the work. Two holds carry a stable code
+  # from the merge queue's deterministic gate. A base conflict gets one base merge
+  # (never a rebase, so the review continuation finds the commit it last read),
+  # resolving only append-only release notes and manifest version lines, then the
+  # same tail as a repair: review continuation, validation, runtime, merge. A moved
+  # base with no conflict only needs the queue to assess the live base again.
+  # Each path runs once per run; a second movement holds as before.
+  - id: base-merge
+    script: base-merge
+    runtime: bun
+    mutates_checkout: true
+    depends_on: [merge]
+    when: "$merge.output.merged == false && $merge.output.hold_code == 'base_conflict'"
+    with:
+      prs: "$selected.output.prs"
+    output_format:
+      type: object
+      properties:
+        resolved: { type: boolean }
+        new_head: { type: string }
+        files_resolved: { type: array, items: { type: string } }
+        conflicts: { type: array, items: { type: string } }
+        summary: { type: string }
+      required: [resolved, new_head, files_resolved, conflicts, summary]
+
+  - id: base-merge-delivery
+    include: archon-deliver
+    depends_on: [base-merge]
+    when: "$base-merge.output.resolved == true"
+    with:
+      prior_report: "$ARTIFACTS_DIR/review/report.md"
+      validation_scope: "$INPUTS.validation_scope"
+      validation_context: "$INPUTS.validation_context"
+      final_validation: "$INPUTS.final_validation"
+      work: >-
+        The base branch was merged into this pull request's branch by the
+        lifecycle's base-merge step because the merge queue held it on a base
+        conflict: $base-merge.output.summary. The only new commit is that merge,
+        with these files resolved mechanically: $base-merge.output.files_resolved.
+        Make no change to the delivered work. Review the merge commit against the
+        prior report, run the project's validation at this head, and finish. Do
+        not switch branches, rebase, or create another PR.
+
+  - id: base-merged-candidate
+    command: bind-delivered-pr
+    context: fresh
+    mutates_checkout: false
+    depends_on: [base-merge-delivery]
+    when: "$base-merge.output.resolved == true"
+    with:
+      delivery: "$base-merge-delivery.output"
+    output_format:
+      type: object
+      properties:
+        delivered: { type: boolean }
+        prs: { type: array, items: { type: string } }
+        head: { type: string }
+      required: [delivered, prs, head]
+
+  - id: runtime-after-base-merge
+    include: archon-verify-runtime
+    depends_on: [base-merged-candidate]
+    when: "$base-merged-candidate.output.delivered == true"
+    with:
+      scenario: "$INPUTS.scenario"
+
+  - id: holdout-after-base-merge
+    include: archon-verify-runtime
+    depends_on: [runtime-after-base-merge]
+    when: "$runtime-after-base-merge.output.verified == true && $INPUTS.holdout != ''"
+    with:
+      scenario: "$INPUTS.holdout"
+
+  - id: qualify-after-base-merge
+    command: qualify-runtime
+    context: fresh
+    mutates_checkout: false
+    depends_on: [base-merged-candidate, runtime-after-base-merge, holdout-after-base-merge]
+    trigger_rule: none_failed_min_one_success
+    when: "$base-merge.output.resolved == true"
+    with:
+      candidate: "$base-merged-candidate.output"
+      runtime: { from: "$runtime-after-base-merge.output", if_skipped: null }
+      holdout: { from: "$holdout-after-base-merge.output", if_skipped: null }
+      holdout_scenario: "$INPUTS.holdout"
+    output_format:
+      type: object
+      properties:
+        ready: { type: boolean }
+        repair: { type: boolean }
+        evidence: { type: string }
+      required: [ready, repair, evidence]
+
+  - id: selected-after-base-merge
+    script: select-qualified
+    runtime: uv
+    depends_on: [base-merged-candidate, qualify-after-base-merge]
+    trigger_rule: none_failed_min_one_success
+    when: "$base-merge.output.resolved == true"
+    with:
+      candidate: "$base-merged-candidate.output"
+      initial: "$qualify-after-base-merge.output"
+      repaired: { from: "$repaired-candidate.output", if_skipped: null }
+      retried: { from: "$qualify-retry.output", if_skipped: null }
+    output_format:
+      type: object
+      properties:
+        ready: { type: boolean }
+        prs: { type: array, items: { type: string } }
+        evidence: { type: string }
+      required: [ready, prs, evidence]
+
+  - id: merge-after-base-merge
+    workflow: archon-merge-queue
+    depends_on: [selected-after-base-merge]
+    when: "$selected-after-base-merge.output.ready == true"
+    with:
+      prs: "$selected-after-base-merge.output.prs"
+      mode: "$INPUTS.merge_mode"
+      merge_method: "$INPUTS.merge_method"
+      required_checks: "$INPUTS.required_checks"
+      publish_holds: "$INPUTS.publish_holds"
+      evidence: "$selected-after-base-merge.output.evidence"
+
+  # Ordered after the base-merge path (which it never shares a run with) because
+  # the engine lets only one suspending node own the run cursor at a time.
+  - id: merge-after-base-move
+    workflow: archon-merge-queue
+    depends_on: [merge, merge-after-base-merge]
+    trigger_rule: none_failed_min_one_success
+    when: "$merge.output.merged == false && $merge.output.hold_code == 'base_moved'"
+    with:
+      prs: "$selected.output.prs"
+      mode: "$INPUTS.merge_mode"
+      merge_method: "$INPUTS.merge_method"
+      required_checks: "$INPUTS.required_checks"
+      publish_holds: "$INPUTS.publish_holds"
+      evidence: "$selected.output.evidence"
+
+  # One merge outcome for the tail, whichever queue produced it.
+  - id: merged
+    script: merge-outcome
+    runtime: uv
+    mutates_checkout: false
+    depends_on: [merge, merge-after-base-merge, merge-after-base-move]
+    trigger_rule: none_failed_min_one_success
+    with:
+      first: "$merge.output"
+      after_base_merge: { from: "$merge-after-base-merge.output", if_skipped: null }
+      after_base_move: { from: "$merge-after-base-move.output", if_skipped: null }
+    output_format:
+      type: object
+      properties:
+        merged: { type: boolean }
+        urls: { type: array, items: { type: string } }
+        summary: { type: string }
+        source: { type: string }
+      required: [merged, urls, summary, source]
+
   # A merged `Relates to #N` pull request leaves its issue open, and every issue
   # that depends on it then waits. This run worked the issue, so once GitHub
   # confirms its own pull requests merged, the script closes the issue if open.
@@ -285,8 +445,8 @@ nodes:
     script: close-target
     runtime: uv
     mutates_checkout: false
-    depends_on: [intake, selected, merge]
-    when: "$merge.output.merged == true && $INPUTS.close_target == 'true'"
+    depends_on: [intake, selected, merged]
+    when: "$merged.output.merged == true && $INPUTS.close_target == 'true'"
     with:
       target: "$intake.output.target"
       prs: "$selected.output.prs"
@@ -301,8 +461,8 @@ nodes:
   # the default branch onto the running service and reads the revision back.
   - id: deploy
     include: archon-deploy
-    depends_on: [merge]
-    when: "$merge.output.merged == true && $INPUTS.deploy != ''"
+    depends_on: [merged]
+    when: "$merged.output.merged == true && $INPUTS.deploy != ''"
     with:
       deploy: "$INPUTS.deploy"
       health: "$INPUTS.health"

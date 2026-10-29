@@ -60,7 +60,8 @@ nodes:
               state: { type: string, enum: [passing, failing, pending, missing] }
             required: [pr, head_sha, check, state]
         reason: { type: string }
-      required: [requirement, source, checks, checks_state, results, reason]
+        conflicts: { type: array, items: { type: string } }
+      required: [requirement, source, checks, checks_state, results, reason, conflicts]
 
   - id: assess
     model: opus
@@ -127,7 +128,8 @@ nodes:
         summary: { type: string }
         method: { type: string, enum: [merge, squash, rebase, ''] }
         plan_digest: { type: string }
-      required: [ready, summary, method, plan_digest]
+        hold_code: { type: string, enum: ['', base_conflict] }
+      required: [ready, summary, method, plan_digest, hold_code]
 
   - id: approval
     depends_on: [gate]
@@ -185,4 +187,5 @@ nodes:
               queued: { type: array, items: { type: string } }
               prior_base_sha: { type: string }
               summary: { type: string }
-            required: [done, merged, urls, queued, prior_base_sha, summary]
+              hold_code: { type: string, enum: ['', base_conflict, base_moved] }
+            required: [done, merged, urls, queued, prior_base_sha, summary, hold_code]

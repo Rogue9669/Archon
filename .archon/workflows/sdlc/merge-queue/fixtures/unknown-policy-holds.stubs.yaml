@@ -7,6 +7,7 @@ ci-policy:
   checks_state: "unknown"
   results: []
   reason: "GitHub did not report the required checks for example/app@main: rulesets (HTTP 403). Declare them with the required_checks input"
+  conflicts: []
 assess:
   summary: "stub: review and validation verified"
   eligible: true
@@ -23,6 +24,7 @@ gate:
   summary: "required CI policy is unknown: GitHub did not report the required checks"
   method: "squash"
   plan_digest: "fixture"
+  hold_code: ""
 refresh:
   authorized: false
   repository: "example/app"
@@ -37,6 +39,7 @@ execute:
   queued: []
   prior_base_sha: ""
   summary: "merge is not authorized"
+  hold_code: ""
 fixture:
   expect: completed
   reached: [ci-policy, assess, gate]
