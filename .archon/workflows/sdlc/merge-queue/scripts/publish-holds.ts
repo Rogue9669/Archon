@@ -84,14 +84,13 @@ const holds = rawHolds.map(value => {
   if (hold.action === 'hold' && hold.reasons.length === 0) {
     throw new Error('publish-holds: a hold must include evidence-backed reasons');
   }
-  if (hold.action !== 'hold' && hold.reasons.length !== 0) {
-    throw new Error('publish-holds: only a hold may include reasons');
-  }
-  return hold as {
-    pr_url: string;
-    head_sha: string;
-    action: 'hold' | 'clear';
-    reasons: string[];
+  // The assess agent may explain a clear in `reasons`; nothing is published from them, so they are
+  // dropped here instead of failing the whole queue on an eligible merge (LWOS, 2026-10-30, #1012).
+  return {
+    pr_url: hold.pr_url,
+    head_sha: hold.head_sha,
+    action: hold.action as 'hold' | 'clear',
+    reasons: hold.action === 'hold' ? (hold.reasons as string[]) : [],
   };
 });
 if (new Set(holds.map(hold => hold.pr_url)).size !== holds.length) {
